@@ -1,0 +1,78 @@
+name: Test custom CLI version input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create mock wget that records the download URL
+        run: |
+          # Create a fake screenly binary
+          cat > /tmp/fake-screenly.sh << 'EOF'
+          #!/bin/sh
+          echo "version-check-output"
+          exit 0
+          EOF
+          chmod +x /tmp/fake-screenly.sh
+
+          # Create a fake wget that records the URL and serves mock binary
+          mkdir -p /tmp/mock-bin
+          cat > /tmp/mock-bin/wget << 'WGETEOF'
+          #!/bin/sh
+          # Record all arguments for inspection
+          echo "$@" >> /tmp/wget-calls.log
+
+          # Parse -O flag to find output file
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O|--output-document) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+
+          # Create a fake tar.gz containing our mock screenly binary
+          mkdir -p /tmp/fake-cli-src
+          cp /tmp/fake-screenly.sh /tmp/fake-cli-src/screenly
+          chmod +x /tmp/fake-cli-src/screenly
+          if [ -n "$out" ]; then
+            tar czf "$out" -C /tmp/fake-cli-src screenly
+          else
+            tar czf - -C /tmp/fake-cli-src screenly
+          fi
+          exit 0
+          WGETEOF
+          chmod +x /tmp/mock-bin/wget
+          echo "/tmp/mock-bin" >> "$GITHUB_PATH"
+
+      - name: Run action with custom CLI version
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "mock-token-for-testing"
+          cli_commands: "screen list"
+          cli_version: "v1.0.0"
+
+      - name: Assert action succeeded
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected action to succeed"
+            exit 1
+          fi
+          echo "PASS: action succeeded"
+
+      - name: Assert correct version was requested in download URL
+        run: |
+          echo "wget calls:"
+          cat /tmp/wget-calls.log || echo "(no wget calls recorded)"
+          if ! grep -q "v1.0.0" /tmp/wget-calls.log; then
+            echo "FAIL: expected wget to be called with version v1.0.0"
+            exit 1
+          fi
+          echo "PASS: correct version v1.0.0 was used in download URL"

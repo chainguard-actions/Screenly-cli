@@ -1,0 +1,64 @@
+name: Test invalid token error handling
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create mock screenly CLI
+        run: |
+          # Create a fake screenly binary that simulates auth failure
+          cat > /tmp/fake-screenly.sh << 'EOF'
+          #!/bin/sh
+          echo "Error: Unauthorized - invalid API token" >&2
+          exit 1
+          EOF
+          chmod +x /tmp/fake-screenly.sh
+
+          # Create a fake wget that places our mock binary
+          mkdir -p /tmp/mock-bin
+          cat > /tmp/mock-bin/wget << 'WGETEOF'
+          #!/bin/sh
+          # Parse -O flag to find output file
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O|--output-document) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          # Create a fake tar.gz containing our mock screenly binary
+          mkdir -p /tmp/fake-cli-src
+          cp /tmp/fake-screenly.sh /tmp/fake-cli-src/screenly
+          chmod +x /tmp/fake-cli-src/screenly
+          if [ -n "$out" ]; then
+            tar czf "$out" -C /tmp/fake-cli-src screenly
+          else
+            tar czf - -C /tmp/fake-cli-src screenly
+          fi
+          exit 0
+          WGETEOF
+          chmod +x /tmp/mock-bin/wget
+          echo "/tmp/mock-bin" >> "$GITHUB_PATH"
+
+      - name: Run action (expect failure)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "fake-invalid-token-12345"
+          cli_commands: "screen list"
+
+      - name: Assert action failed with invalid token
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "FAIL: expected action to fail with invalid token, but got outcome: $OUTCOME"
+            exit 1
+          fi
+          echo "PASS: action correctly failed with invalid token"

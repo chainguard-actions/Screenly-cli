@@ -1,0 +1,168 @@
+# .github/workflows/release.yml
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    name: deploy
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    runs-on: ${{ matrix.os }}
+    env:
+      # For some builds, we use cross to test on 32-bit and big-endian
+      # systems.
+      CARGO: cargo
+      # When CARGO is set to CROSS, this is set to `--target matrix.target`
+      TARGET_FLAGS: ""
+      # When CARGO is set to CROSS, TARGET_DIR includes matrix.target.
+      TARGET_DIR: ./target
+      # Emit backtraces on panics.
+      RUST_BACKTRACE: 1
+    strategy:
+      matrix:
+        build:
+          - linux
+          - macos
+          - windows
+        include:
+          - build: linux
+            os: ubuntu-22.04
+            rust: stable
+            target: x86_64-unknown-linux-gnu
+          - build: linux-musl
+            os: ubuntu-22.04
+            rust: stable
+            target: x86_64-unknown-linux-musl
+          - build: macos
+            os: macos-15
+            rust: stable
+            target: x86_64-apple-darwin
+          - build: macos-aarch64
+            os: macos-15
+            rust: stable
+            target: aarch64-apple-darwin
+          - build: windows
+            os: ubuntu-22.04
+            rust: stable
+            target: x86_64-pc-windows-gnu
+          - build: windows-32
+            os: ubuntu-22.04
+            rust: stable
+            target: i686-pc-windows-gnu
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.target }}
+
+      - name: Use Cross
+        shell: bash
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: |
+          cargo install cross
+          echo "CARGO=cross" >> "$GITHUB_ENV"
+          safe_target=$(printf '%s' "$MATRIX_TARGET" | tr -d '\n\r')
+          echo "TARGET_FLAGS=--target ${safe_target}" >> "$GITHUB_ENV"
+          echo "TARGET_DIR=./target/${safe_target}" >> "$GITHUB_ENV"
+
+      - name: Show command used for Cargo
+        env:
+          CARGO_CMD: ${{ env.CARGO }}
+          TARGET_FLAGS_VAL: ${{ env.TARGET_FLAGS }}
+          TARGET_DIR_VAL: ${{ env.TARGET_DIR }}
+        run: |
+          echo "cargo command is: $CARGO_CMD"
+          echo "target flag is: $TARGET_FLAGS_VAL"
+          echo "target dir is: $TARGET_DIR_VAL"
+
+      - name: Build release binary
+        env:
+          CARGO_CMD: ${{ env.CARGO }}
+          TARGET_FLAGS_VAL: ${{ env.TARGET_FLAGS }}
+        shell: bash
+        run: |
+          args=()
+          if [ -n "$TARGET_FLAGS_VAL" ]; then
+            read -ra target_args <<< "$TARGET_FLAGS_VAL"
+            args+=("${target_args[@]}")
+          fi
+          "$CARGO_CMD" build --verbose --release "${args[@]}"
+
+      - name: Strip release binary (linux and macos)
+        if: matrix.build == 'linux' || matrix.build == 'macos'
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: strip "target/${MATRIX_TARGET}/release/screenly"
+
+      - name: Package
+        shell: bash
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+          MATRIX_BUILD: ${{ matrix.build }}
+        run: |
+          cd "target/${MATRIX_TARGET}/release"
+          if [[ "$MATRIX_BUILD" == windows* ]]; then
+            zip "../../../screenly-cli-${MATRIX_TARGET}.zip" screenly.exe
+          else
+            tar czvf "../../../screenly-cli-${MATRIX_TARGET}.tar.gz" screenly
+          fi
+          cd -
+
+      - name: Publish
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        # TODO: if any of the build step fails, the release should be deleted.
+        with:
+          files: "screenly*"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
+        with:
+          subject-path: "${{ github.workspace }}/screenly*"
+
+  build-docker-image:
+    environment: master
+    name: docker
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - name: Build container
+        run: |
+          docker build . \
+          --build-arg "RELEASE=$GITHUB_REF_NAME" \
+          -t "screenly/cli:$GITHUB_REF_NAME"
+
+      - name: Tag container
+        run: |
+          docker tag \
+          "screenly/cli:$GITHUB_REF_NAME" \
+          "screenly/cli:latest"
+
+      - name: Login to DockerHub
+        if: success() && github.event_name != 'pull_request'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Docker containers
+        run: |
+          docker push "screenly/cli:$GITHUB_REF_NAME"
+          docker push "screenly/cli:latest"

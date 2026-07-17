@@ -1,0 +1,79 @@
+name: Test suppress CLI output printing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create mock screenly CLI and wget
+        run: |
+          # Create a fake screenly binary that returns output
+          cat > /tmp/fake-screenly.sh << 'EOF'
+          #!/bin/sh
+          echo "screen-uuid-5678 Another Screen Online"
+          exit 0
+          EOF
+          chmod +x /tmp/fake-screenly.sh
+
+          # Create a fake wget that places our mock binary as a tar.gz
+          mkdir -p /tmp/mock-bin
+          cat > /tmp/mock-bin/wget << 'WGETEOF'
+          #!/bin/sh
+          # Parse -O flag to find output file
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O|--output-document) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          # Create a fake tar.gz containing our mock screenly binary
+          mkdir -p /tmp/fake-cli-src
+          cp /tmp/fake-screenly.sh /tmp/fake-cli-src/screenly
+          chmod +x /tmp/fake-cli-src/screenly
+          if [ -n "$out" ]; then
+            tar czf "$out" -C /tmp/fake-cli-src screenly
+          else
+            tar czf - -C /tmp/fake-cli-src screenly
+          fi
+          exit 0
+          WGETEOF
+          chmod +x /tmp/mock-bin/wget
+          echo "/tmp/mock-bin" >> "$GITHUB_PATH"
+
+      - name: Run action with print_cli_commands_output disabled
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "mock-token-for-testing"
+          cli_commands: "screen list"
+          print_cli_commands_output: "false"
+
+      - name: Assert action succeeded
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected action to succeed"
+            exit 1
+          fi
+          echo "PASS: action succeeded"
+
+      - name: Assert CLI response output is still captured even when printing disabled
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected cli_commands_response to be non-empty even when print_cli_commands_output=false"
+            exit 1
+          fi
+          if ! echo "$ACTUAL" | grep -q "screen-uuid-5678"; then
+            echo "FAIL: expected response to contain 'screen-uuid-5678'"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response is captured correctly"
