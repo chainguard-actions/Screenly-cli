@@ -1,0 +1,21 @@
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  test-github-action-workflow:
+    runs-on: ubuntu-latest
+    name: List screens
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: list-screens
+        uses: screenly/cli@5dad863ccdc36263eeb22880ceb67923bea7ef98 # master
+        with:
+          screenly_api_token: ${{ secrets.SCREENLY_API_TOKEN }}
+          cli_commands: screen list

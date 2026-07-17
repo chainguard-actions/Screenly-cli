@@ -1,0 +1,76 @@
+name: Test basic success scenario
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up mock wget and screenly binary
+        run: |
+          # Create a fake screenly binary that prints a simple response
+          cat > /tmp/screenly << 'EOF'
+          #!/bin/sh
+          echo "Asset list: []"
+          exit 0
+          EOF
+          chmod +x /tmp/screenly
+
+          # Create a fake wget that writes the fake binary into a tar.gz
+          mkdir -p /tmp/fake-wget-dir
+          cp /tmp/screenly /tmp/fake-wget-dir/screenly
+          cd /tmp/fake-wget-dir
+          tar czf /tmp/fake-screenly.tar.gz screenly
+
+          # Create a fake wget script that writes the tar.gz to the -O path
+          mkdir -p "$HOME/bin"
+          cat > "$HOME/bin/wget" << 'WGETEOF'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          if [ -n "$out" ]; then
+            cp /tmp/fake-screenly.tar.gz "$out"
+          else
+            cat /tmp/fake-screenly.tar.gz
+          fi
+          exit 0
+          WGETEOF
+          chmod +x "$HOME/bin/wget"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-testing"
+          cli_commands: "asset list"
+          print_cli_commands_output: "true"
+
+      - name: Assert response output is non-empty
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected non-empty response output"
+            exit 1
+          fi
+          echo "PASS: got response: $ACTUAL"
+
+      - name: Assert response contains expected content
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if ! echo "$ACTUAL" | grep -q "Asset list"; then
+            echo "FAIL: expected 'Asset list' in response"
+            exit 1
+          fi
+          echo "PASS"

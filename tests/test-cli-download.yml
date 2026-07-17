@@ -1,0 +1,36 @@
+name: Test Screenly CLI download and binary execution
+on:
+  workflow_dispatch:
+jobs:
+  test-cli-download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Screenly CLI help command
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token"
+          cli_commands: "--help"
+          print_cli_commands_output: "true"
+          cli_version: "v1.1.0"
+
+      - name: Assert CLI binary is executable
+        run: |
+          if [ ! -x /tmp/screenly ]; then
+            echo "FAIL: /tmp/screenly is not executable"
+            exit 1
+          fi
+          echo "PASS: /tmp/screenly is executable"
+
+      - name: Assert help output is captured in response
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: cli_commands_response is empty, expected help text"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response contains output"

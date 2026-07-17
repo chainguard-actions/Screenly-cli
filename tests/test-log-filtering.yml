@@ -1,0 +1,81 @@
+name: Test debug log filtering
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up mock wget and screenly binary with debug output
+        run: |
+          # Create a fake screenly binary that prints debug logs mixed with real output
+          cat > /tmp/screenly << 'EOF'
+          #!/bin/sh
+          echo "2024-10-16T13:16:13.974Z DEBUG [reqwest::connect] starting new connection: https://api.screenly.io/"
+          echo "2024-10-16T13:16:14.100Z INFO [screenly] Fetching assets"
+          echo "2024-10-16T13:16:14.200Z WARNING [screenly] Rate limit approaching"
+          echo "2024-10-16T13:16:14.300Z ERROR [screenly] Retrying request"
+          echo "Playlist: my-playlist-id"
+          exit 0
+          EOF
+          chmod +x /tmp/screenly
+
+          # Create a fake tar.gz containing the screenly binary
+          mkdir -p /tmp/fake-wget-dir
+          cp /tmp/screenly /tmp/fake-wget-dir/screenly
+          cd /tmp/fake-wget-dir
+          tar czf /tmp/fake-screenly.tar.gz screenly
+
+          # Create a fake wget that writes the tar.gz to the -O path
+          mkdir -p "$HOME/bin"
+          cat > "$HOME/bin/wget" << 'WGETEOF'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          if [ -n "$out" ]; then
+            cp /tmp/fake-screenly.tar.gz "$out"
+          else
+            cat /tmp/fake-screenly.tar.gz
+          fi
+          exit 0
+          WGETEOF
+          chmod +x "$HOME/bin/wget"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-testing"
+          cli_commands: "playlist list"
+          print_cli_commands_output: "true"
+
+      - name: Assert debug logs are filtered from response
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Debug/Info/Warning/Error log lines should be filtered out
+          if echo "$ACTUAL" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)'; then
+            echo "FAIL: debug/info/warning/error log lines should be filtered from response"
+            exit 1
+          fi
+          echo "PASS: no debug log lines in response"
+
+      - name: Assert actual content is present in response
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if ! echo "$ACTUAL" | grep -q "Playlist"; then
+            echo "FAIL: expected 'Playlist' in response after log filtering"
+            exit 1
+          fi
+          echo "PASS: actual content present in response"

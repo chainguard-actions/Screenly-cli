@@ -1,0 +1,83 @@
+name: Test custom CLI version input
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up mock wget that records the download URL
+        run: |
+          # Create a fake screenly binary
+          cat > /tmp/screenly << 'EOF'
+          #!/bin/sh
+          echo "version: v1.0.0"
+          exit 0
+          EOF
+          chmod +x /tmp/screenly
+
+          # Create a fake tar.gz containing the screenly binary
+          mkdir -p /tmp/fake-wget-dir
+          cp /tmp/screenly /tmp/fake-wget-dir/screenly
+          cd /tmp/fake-wget-dir
+          tar czf /tmp/fake-screenly.tar.gz screenly
+
+          # Create a fake wget that records the URL and writes the tar.gz to the -O path
+          mkdir -p "$HOME/bin"
+          cat > "$HOME/bin/wget" << 'WGETEOF'
+          #!/bin/sh
+          out=""
+          prev=""
+          url=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O) out="$arg" ;;
+            esac
+            # Capture the URL (last non-flag argument)
+            case "$arg" in
+              -*)  ;;
+              *)   url="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          # Record the URL that was requested
+          echo "$url" > /tmp/wget-requested-url.txt
+          if [ -n "$out" ]; then
+            cp /tmp/fake-screenly.tar.gz "$out"
+          else
+            cat /tmp/fake-screenly.tar.gz
+          fi
+          exit 0
+          WGETEOF
+          chmod +x "$HOME/bin/wget"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-testing"
+          cli_commands: "asset list"
+          cli_version: "v1.0.0"
+
+      - name: Assert correct CLI version was downloaded
+        run: |
+          REQUESTED_URL=$(cat /tmp/wget-requested-url.txt)
+          echo "requested URL: $REQUESTED_URL"
+          if ! echo "$REQUESTED_URL" | grep -q "v1.0.0"; then
+            echo "FAIL: expected download URL to contain 'v1.0.0', got: $REQUESTED_URL"
+            exit 1
+          fi
+          echo "PASS: correct CLI version used in download URL"
+
+      - name: Assert response output is present
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected non-empty response output"
+            exit 1
+          fi
+          echo "PASS: got response: $ACTUAL"
