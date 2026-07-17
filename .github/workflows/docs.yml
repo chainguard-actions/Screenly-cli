@@ -72,7 +72,8 @@ jobs:
           (needs.check_files_changed.outputs.docs_edge_apps == 'true')
         )
     runs-on: ubuntu-latest
-    permissions: {}
+    permissions:
+      contents: read
     needs:
       - check_files_changed
       - docs-help-md

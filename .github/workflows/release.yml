@@ -17,7 +17,7 @@ jobs:
       # For some builds, we use cross to test on 32-bit and big-endian
       # systems.
       CARGO: cargo
-      # When CARGO is set to CROSS, this is set to `--target matrix.target`
+      # When CARGO is set to CROSS, this is set to `--target matrix.target`.
       TARGET_FLAGS: ""
       # When CARGO is set to CROSS, TARGET_DIR includes matrix.target.
       TARGET_DIR: ./target
@@ -71,33 +71,29 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
         run: |
           cargo install cross
-          echo "CARGO=cross" >> "$GITHUB_ENV"
           safe_target=$(printf '%s' "$MATRIX_TARGET" | tr -d '\n\r')
+          echo "CARGO=cross" >> "$GITHUB_ENV"
           echo "TARGET_FLAGS=--target ${safe_target}" >> "$GITHUB_ENV"
           echo "TARGET_DIR=./target/${safe_target}" >> "$GITHUB_ENV"
 
       - name: Show command used for Cargo
         env:
-          CARGO_CMD: ${{ env.CARGO }}
-          TARGET_FLAGS_VAL: ${{ env.TARGET_FLAGS }}
-          TARGET_DIR_VAL: ${{ env.TARGET_DIR }}
+          CARGO: ${{ env.CARGO }}
+          TARGET_FLAGS: ${{ env.TARGET_FLAGS }}
+          TARGET_DIR: ${{ env.TARGET_DIR }}
         run: |
-          echo "cargo command is: $CARGO_CMD"
-          echo "target flag is: $TARGET_FLAGS_VAL"
-          echo "target dir is: $TARGET_DIR_VAL"
+          echo "cargo command is: $CARGO"
+          echo "target flag is: $TARGET_FLAGS"
+          echo "target dir is: $TARGET_DIR"
 
       - name: Build release binary
-        env:
-          CARGO_CMD: ${{ env.CARGO }}
-          TARGET_FLAGS_VAL: ${{ env.TARGET_FLAGS }}
         shell: bash
+        env:
+          CARGO: ${{ env.CARGO }}
+          TARGET_FLAGS: ${{ env.TARGET_FLAGS }}
         run: |
-          args=()
-          if [ -n "$TARGET_FLAGS_VAL" ]; then
-            read -ra target_args <<< "$TARGET_FLAGS_VAL"
-            args+=("${target_args[@]}")
-          fi
-          "$CARGO_CMD" build --verbose --release "${args[@]}"
+          read -ra target_flags_array <<< "$TARGET_FLAGS"
+          "$CARGO" build --verbose --release "${target_flags_array[@]}"
 
       - name: Strip release binary (linux and macos)
         if: matrix.build == 'linux' || matrix.build == 'macos'

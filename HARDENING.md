@@ -8,170 +8,102 @@
 
 **Test Policy SHA:** `843adf9e4b8f85d0c08b27b9d0b09dd094b54702`
 
-**Harden Agent Version:** `1`
+**Harden Agent Version:** `2`
 
-Action **Screenly--cli/v1.1.1** was hardened automatically. 20 finding(s) were identified and resolved across 2 iteration(s).
+Action **Screenly--cli/v1.1.1** was hardened automatically. 9 finding(s) were identified and resolved across 3 iteration(s).
 
 ## Findings Fixed
 
 ### script-injection (severity: high)
 
-Sub-rule (a): Multiple ${{ inputs.* }} expressions are directly interpolated inside run: shell commands in action.yml. (1) Line 37: `${{ inputs.cli_version }}` is embedded in a wget URL — an attacker-controlled version string is injected into the shell command. (2) Line 48: `API_TOKEN=${{ inputs.screenly_api_token }}` and `${{ inputs.cli_commands }}` are directly interpolated into a shell command line, allowing arbitrary command injection via the cli_commands input.
+Rule (a): Multiple ${{ inputs.* }} expressions are directly interpolated into run: shell blocks in action.yml. Specifically: ${{ inputs.cli_version }} is interpolated into a wget URL (line 36), ${{ inputs.screenly_api_token }} is used as an inline env assignment (line 47), and ${{ inputs.cli_commands }} is passed directly as shell arguments (line 47). An attacker controlling these inputs can inject arbitrary shell commands.
 
 Locations:
 
-- `action.yml:37`
-- `action.yml:48`
-
-### script-injection (severity: high)
-
-Sub-rule (a): Multiple ${{ matrix.* }} and ${{ env.* }} expressions are directly interpolated inside run: shell commands in release.yml. (1) 'Use Cross' step: `${{ matrix.target }}` is interpolated into echo commands that write to $GITHUB_ENV. (2) 'Show command used for Cargo' step: `${{ env.CARGO }}`, `${{ env.TARGET_FLAGS }}`, `${{ env.TARGET_DIR }}` are interpolated in run: block. (3) 'Build release binary' step: `${{ env.CARGO }}` and `${{ env.TARGET_FLAGS }}` are used directly as shell command. (4) 'Strip release binary' step: `${{ matrix.target }}` is interpolated in a shell path. (5) 'Package' step: `${{ matrix.target }}` and `${{ matrix.build }}` are interpolated in shell commands.
-
-Locations:
-
-- `.github/workflows/release.yml:56`
-- `.github/workflows/release.yml:62`
-- `.github/workflows/release.yml:68`
-- `.github/workflows/release.yml:73`
-- `.github/workflows/release.yml:79`
-
-### script-injection (severity: high)
-
-Sub-rule (a): `${{ matrix.rust }}` is directly interpolated inside run: shell commands in rust.yml. The matrix value is used as a Docker image tag in shell commands: `rust:${{ matrix.rust }}` appears unquoted in docker run commands, allowing shell metacharacter injection if the matrix value were attacker-influenced.
-
-Locations:
-
-- `.github/workflows/rust.yml:38`
-- `.github/workflows/rust.yml:46`
+- `action.yml:36`
+- `action.yml:47`
 
 ### github-env-injection (severity: high)
 
-In the 'Use Cross' step of release.yml, the value `${{ matrix.target }}` is written directly to $GITHUB_ENV without sanitization (no `printf '%s' ... | tr -d '\n\r'` step). This allows newline injection into the GitHub environment file: `echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV` and `echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV`.
+The 'Run CLI' step in action.yml writes CLI command output to $GITHUB_OUTPUT without sanitization: `echo "response=$(cat /tmp/command_cleaned_output.txt)" >> "$GITHUB_OUTPUT"`. The content of command_cleaned_output.txt is derived from user-controlled ${{ inputs.cli_commands }} and could contain newlines that inject additional key=value pairs into GITHUB_OUTPUT.
 
 Locations:
 
-- `.github/workflows/release.yml:59`
-- `.github/workflows/release.yml:60`
+- `action.yml:54`
+
+### script-injection (severity: high)
+
+Rule (a): Multiple ${{ ... }} expressions are directly interpolated into run: shell blocks in release.yml. Offending lines include: `run: ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}` (the entire run: value is an expression), `echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV`, `echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV`, `cd target/${{ matrix.target }}/release`, `if [[ "${{ matrix.build }}" == windows* ]]`, `zip ../../../screenly-cli-${{ matrix.target }}.zip`, and `tar czvf ../../../screenly-cli-${{ matrix.target }}.tar.gz`. These allow matrix-controlled values to be injected into shell commands before the shell parses them.
+
+Locations:
+
+- `.github/workflows/release.yml:62`
+- `.github/workflows/release.yml:68`
+- `.github/workflows/release.yml:75`
+- `.github/workflows/release.yml:81`
+- `.github/workflows/release.yml:85`
+- `.github/workflows/release.yml:88`
+
+### github-env-injection (severity: high)
+
+In release.yml, the 'Use Cross' step writes ${{ matrix.target }} directly to $GITHUB_ENV without sanitization: `echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV` and `echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV`. A matrix value containing newlines could inject additional environment variables.
+
+Locations:
+
+- `.github/workflows/release.yml:63`
+- `.github/workflows/release.yml:64`
 
 ### unpinned-uses (severity: high)
 
-action.yml references `actions/upload-artifact@v4` — a mutable tag ref instead of a pinned SHA digest. This is vulnerable to supply-chain attacks if the tag is moved.
+Multiple `uses:` references are pinned to mutable tags or branch names instead of full 40-character commit SHAs, making them vulnerable to supply-chain attacks. Unpinned references found:
+- action.yml: `actions/upload-artifact@v4`
+- .github/workflows/actions.yml: `actions/checkout@v4`, `screenly/cli@master`
+- .github/workflows/docs.yml: `actions/checkout@v4`, `dorny/paths-filter@v3`, `actions/checkout@v3`, `dtolnay/rust-toolchain@master`
+- .github/workflows/fmt.yml: `actions/checkout@v4`, `dtolnay/rust-toolchain@nightly`
+- .github/workflows/lint.yml: `actions/checkout@v4`, `actions-rs/clippy-check@v1.0.7`
+- .github/workflows/nix.yml: `actions/checkout@v4`, `DeterminateSystems/nix-installer-action@v8`, `DeterminateSystems/flakehub-cache-action@main`
+- .github/workflows/release.yml: `actions/checkout@v3`, `dtolnay/rust-toolchain@master`, `softprops/action-gh-release@v1`, `actions/attest-build-provenance@v1`, `actions/checkout@v3`, `docker/login-action@v3`
+- .github/workflows/rust.yml: `actions/checkout@v4`, `actions/cache@v4`
+- .github/workflows/sbom.yml: `actions/checkout@v4`, `sbomify/github-action@master`, `actions/attest-build-provenance@v1`
 
 Locations:
 
-- `action.yml:60`
-
-### unpinned-uses (severity: high)
-
-actions.yml references `actions/checkout@v4` and `screenly/cli@master` — both are mutable tag/branch refs instead of pinned SHA digests.
-
-Locations:
-
-- `.github/workflows/actions.yml:10`
-- `.github/workflows/actions.yml:12`
-
-### unpinned-uses (severity: high)
-
-docs.yml references multiple unpinned actions: `actions/checkout@v4`, `dorny/paths-filter@v3`, `actions/checkout@v3`, and `dtolnay/rust-toolchain@master` — all mutable tag/branch refs instead of pinned SHA digests.
-
-Locations:
-
-- `.github/workflows/docs.yml:20`
+- `action.yml:63`
+- `.github/workflows/actions.yml:9`
+- `.github/workflows/actions.yml:11`
 - `.github/workflows/docs.yml:21`
-- `.github/workflows/docs.yml:34`
-- `.github/workflows/docs.yml:37`
-
-### unpinned-uses (severity: high)
-
-fmt.yml references `actions/checkout@v4` and `dtolnay/rust-toolchain@nightly` — both are mutable tag/branch refs instead of pinned SHA digests.
-
-Locations:
-
+- `.github/workflows/docs.yml:22`
+- `.github/workflows/docs.yml:36`
+- `.github/workflows/docs.yml:40`
 - `.github/workflows/fmt.yml:13`
 - `.github/workflows/fmt.yml:16`
-
-### unpinned-uses (severity: high)
-
-lint.yml references `actions/checkout@v4` and `actions-rs/clippy-check@v1.0.7` — both are mutable tag refs instead of pinned SHA digests.
-
-Locations:
-
-- `.github/workflows/lint.yml:22`
-- `.github/workflows/lint.yml:29`
-
-### unpinned-uses (severity: high)
-
-nix.yml references `actions/checkout@v4`, `DeterminateSystems/nix-installer-action@v8`, and `DeterminateSystems/flakehub-cache-action@main` — all mutable tag/branch refs instead of pinned SHA digests.
-
-Locations:
-
-- `.github/workflows/nix.yml:30`
-- `.github/workflows/nix.yml:33`
-- `.github/workflows/nix.yml:36`
-
-### unpinned-uses (severity: high)
-
-release.yml references multiple unpinned actions: `actions/checkout@v3`, `dtolnay/rust-toolchain@master`, `softprops/action-gh-release@v1`, `actions/attest-build-provenance@v1`, `docker/login-action@v3` — all mutable tag/branch refs instead of pinned SHA digests.
-
-Locations:
-
-- `.github/workflows/release.yml:47`
-- `.github/workflows/release.yml:50`
-- `.github/workflows/release.yml:86`
-- `.github/workflows/release.yml:92`
+- `.github/workflows/lint.yml:24`
+- `.github/workflows/lint.yml:31`
+- `.github/workflows/nix.yml:31`
+- `.github/workflows/nix.yml:34`
+- `.github/workflows/nix.yml:37`
+- `.github/workflows/release.yml:52`
+- `.github/workflows/release.yml:55`
+- `.github/workflows/release.yml:93`
+- `.github/workflows/release.yml:97`
 - `.github/workflows/release.yml:107`
-- `.github/workflows/release.yml:116`
-
-### unpinned-uses (severity: high)
-
-rust.yml references `actions/checkout@v4` and `actions/cache@v4` — mutable tag refs instead of pinned SHA digests.
-
-Locations:
-
-- `.github/workflows/rust.yml:24`
+- `.github/workflows/release.yml:117`
 - `.github/workflows/rust.yml:27`
-
-### unpinned-uses (severity: high)
-
-sbom.yml references `actions/checkout@v4`, `sbomify/github-action@master`, and `actions/attest-build-provenance@v1` — all mutable tag/branch refs instead of pinned SHA digests.
-
-Locations:
-
+- `.github/workflows/rust.yml:30`
 - `.github/workflows/sbom.yml:14`
-- `.github/workflows/sbom.yml:17`
-- `.github/workflows/sbom.yml:28`
+- `.github/workflows/sbom.yml:16`
+- `.github/workflows/sbom.yml:26`
 
 ### missing-permissions (severity: medium)
 
-actions.yml has no top-level `permissions:` key and the single job `test-github-action-workflow` has no job-level `permissions:` key. The workflow runs with default (broad) permissions.
+Two workflow files have no top-level `permissions:` key and no job-level `permissions:` key on any of their jobs, meaning they run with the default (potentially broad) token permissions:
+- .github/workflows/actions.yml: no permissions defined at top-level or job level
+- .github/workflows/rust.yml: no permissions defined at top-level or job level
 
 Locations:
 
 - `.github/workflows/actions.yml:1`
-
-### missing-permissions (severity: medium)
-
-rust.yml has no top-level `permissions:` key and the job `build_and_test` has no job-level `permissions:` key. The workflow runs with default (broad) permissions.
-
-Locations:
-
 - `.github/workflows/rust.yml:1`
-
-### missing-permissions (severity: medium)
-
-release.yml has no top-level `permissions:` key. The `build-release` job has job-level permissions, but the `build-docker-image` job has no `permissions:` key and therefore runs with default (broad) permissions.
-
-Locations:
-
-- `.github/workflows/release.yml:100`
-
-### missing-permissions (severity: medium)
-
-docs.yml has no top-level `permissions:` key. The `check_files_changed` and `docs-help-md` jobs have job-level permissions, but the `trigger-developer-portal-deploy` job has no `permissions:` key and therefore runs with default (broad) permissions.
-
-Locations:
-
-- `.github/workflows/docs.yml:56`
 
 ### static-inline-injection (severity: high)
 
@@ -205,33 +137,43 @@ Locations:
 
 **Notes:**
 
-Fixed all findings across 8 files:
+Fixed all findings across action.yml and .github/workflows/*.yml:
 
-**action.yml**: Moved ${{ inputs.cli_version }}, ${{ inputs.screenly_api_token }}, and ${{ inputs.cli_commands }} from inline run: blocks to env: maps. Pinned actions/upload-artifact@v4 to SHA ea165f8d65b6e75b540449e92b4886f43607fa02.
+1. script-injection / static-inline-injection (action.yml): Moved ${{ inputs.cli_version }}, ${{ inputs.screenly_api_token }}, and ${{ inputs.cli_commands }} out of run: blocks into env: maps; shell scripts reference plain env vars.
 
-**actions.yml**: Added top-level permissions: {} and job-level permissions: contents: read. Pinned actions/checkout@v4 (SHA 34e114876b0b11c390a56381ad16ebd13914f8d5) and screenly/cli@master (SHA 5dad863ccdc36263eeb22880ceb67923bea7ef98).
+2. github-env-injection (action.yml): Sanitized CLI output before writing to $GITHUB_OUTPUT using `printf '%s' ... | tr -d '\n\r'`.
 
-**docs.yml**: Added permissions: {} to trigger-developer-portal-deploy job. Pinned actions/checkout@v4, dorny/paths-filter@v3, actions/checkout@v3, and dtolnay/rust-toolchain@master to SHAs.
+3. script-injection / github-env-injection (release.yml): Moved ${{ matrix.target }} and ${{ matrix.build }} to env: blocks in 'Use Cross', 'Strip release binary', and 'Package' steps. Sanitized matrix.target with tr -d '\n\r' before writing to $GITHUB_ENV.
 
-**fmt.yml**: Pinned actions/checkout@v4 and dtolnay/rust-toolchain@nightly to SHAs.
+4. unpinned-uses: Pinned all 15 unpinned action references to full 40-character commit SHAs across action.yml, actions.yml, docs.yml, fmt.yml, lint.yml, nix.yml, release.yml, rust.yml, and sbom.yml.
 
-**lint.yml**: Pinned actions/checkout@v4 and actions-rs/clippy-check@v1.0.7 to SHAs.
-
-**nix.yml**: Pinned actions/checkout@v4, DeterminateSystems/nix-installer-action@v8, and DeterminateSystems/flakehub-cache-action@main to SHAs.
-
-**release.yml**: Added permissions: contents: read to build-docker-image job. Moved all ${{ matrix.* }} and ${{ env.* }} expressions to env: blocks. Sanitized GITHUB_ENV writes with printf/tr to prevent newline injection. Pinned all 5 unpinned actions to SHAs.
-
-**rust.yml**: Added top-level permissions: {} and job-level permissions: contents: read. Moved ${{ matrix.rust }} to env: blocks as RUST_VERSION. Pinned actions/checkout@v4 and actions/cache@v4 to SHAs.
+5. missing-permissions: Added `permissions: contents: read` to actions.yml and rust.yml.
 
 ### Iteration 2
 
-**Fixes applied:** script-injection, github-env-injection
+**Fixes applied:** script-injection, missing-permissions
 
 **Notes:**
 
-Fixed all four findings:
-1. action.yml line 52 (script-injection): Quoted `$CLI_COMMANDS` as `"$CLI_COMMANDS"` to prevent shell metacharacter injection from unquoted expansion.
-2. action.yml line 57 (github-env-injection): Sanitized CLI output with `printf '%s' ... | tr -d '\n\r'` before writing to $GITHUB_OUTPUT to prevent newline injection.
-3. docs.yml line 68 (script-injection): Moved `${{ secrets.DEVELOPER_PORTAL_REPO_TOKEN }}` to the step's `env:` block and referenced it as `$DEVELOPER_PORTAL_REPO_TOKEN` in the curl command.
-4. release.yml line 77 (script-injection): Replaced unquoted `$CARGO_CMD ... $TARGET_FLAGS_VAL` with a bash array approach using `read -ra` to split TARGET_FLAGS_VAL into separate arguments, with `"$CARGO_CMD"` properly quoted.
+Fixed 7 findings across 4 files:
+
+1. release.yml (script-injection, lines 70+75): Moved ${{ env.CARGO }}, ${{ env.TARGET_FLAGS }}, ${{ env.TARGET_DIR }} into env: blocks for 'Show command used for Cargo' and 'Build release binary' steps; referenced as plain shell vars.
+
+2. docs.yml (script-injection, line 75): Moved ${{ secrets.DEVELOPER_PORTAL_REPO_TOKEN }} into an env: block (DEVELOPER_PORTAL_REPO_TOKEN) and referenced as $DEVELOPER_PORTAL_REPO_TOKEN in the curl -H Authorization header.
+
+3. rust.yml (script-injection, lines 44+52): Moved ${{ matrix.rust }} into env: blocks (MATRIX_RUST) for both Build and Run tests steps; Docker image tag is now "rust:${MATRIX_RUST}" (quoted).
+
+4. action.yml (script-injection, line 52): Fixed unquoted $CLI_COMMANDS by splitting into a bash array with `read -ra cli_args <<< "$CLI_COMMANDS"` and passing "${cli_args[@]}" to prevent shell metacharacter injection.
+
+5. docs.yml (missing-permissions, line 62): Added `permissions: contents: read` to the trigger-developer-portal-deploy job.
+
+6. release.yml (missing-permissions, line 100): Added `permissions: contents: read` to the build-docker-image job.
+
+### Iteration 3
+
+**Fixes applied:** script-injection
+
+**Notes:**
+
+Fixed the 'Build release binary' step in .github/workflows/release.yml: (1) Added `shell: bash` to enable bash-specific features; (2) Quoted `$CARGO` as `"$CARGO"` to prevent shell metacharacter injection; (3) Replaced unquoted `$TARGET_FLAGS` with a bash array (`read -ra target_flags_array <<< "$TARGET_FLAGS"`) expanded as `"${target_flags_array[@]}"` to safely handle the multi-word flag value while keeping each token properly quoted.
 
