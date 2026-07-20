@@ -1,0 +1,32 @@
+name: Test Screenly CLI help command
+on:
+  workflow_dispatch:
+jobs:
+  test-help:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Screenly CLI help command with output suppressed
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-help"
+          cli_commands: "--help"
+          print_cli_commands_output: "false"
+
+      - name: Assert CLI response contains help text
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected non-empty CLI response for --help"
+            exit 1
+          fi
+          if echo "$ACTUAL" | grep -qiE 'usage|help|command|option'; then
+            echo "PASS: CLI response contains help text"
+          else
+            echo "FAIL: expected help text in response, got: $ACTUAL"
+            exit 1
+          fi

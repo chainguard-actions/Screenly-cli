@@ -1,0 +1,39 @@
+name: Test Screenly CLI help command
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Screenly CLI help command
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-help-check"
+          cli_commands: "--help"
+          print_cli_commands_output: "true"
+
+      - name: Assert output is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected cli_commands_response to be non-empty"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response is set"
+
+      - name: Assert help content in output
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if echo "$ACTUAL" | grep -qiE 'usage|help|command|option|screenly'; then
+            echo "PASS: help output contains expected content"
+          else
+            echo "FAIL: expected help content in output, got: $ACTUAL"
+            exit 1
+          fi

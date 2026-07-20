@@ -1,0 +1,36 @@
+name: Test Screenly CLI custom version input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Screenly CLI with explicit version
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-version-test"
+          cli_commands: "--version"
+          cli_version: "v1.0.5"
+          print_cli_commands_output: "true"
+
+      - name: Assert CLI binary was downloaded and executed
+        run: |
+          if [ ! -f /tmp/screenly ]; then
+            echo "FAIL: screenly binary not found at /tmp/screenly"
+            exit 1
+          fi
+          echo "PASS: screenly binary exists at /tmp/screenly"
+
+      - name: Assert output is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected cli_commands_response to be non-empty"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response is set"

@@ -1,0 +1,34 @@
+---
+name: Generate SBOMs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  sbom:
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Upload SBOM
+        uses: sbomify/github-action@e7848bb19cfcd770b8f06b985603cdd0ec0e0be2 # master
+        env:
+          TOKEN: ${{ secrets.SBOMIFY_TOKEN }}
+          COMPONENT_ID: 'UUzAdk8ixV'
+          LOCK_FILE: 'Cargo.lock'
+          SBOM_VERSION: ${{ github.ref_name }}
+          OUTPUT_FILE: 'cli.cdx.json'
+          OVERRIDE_NAME: true
+          AUGMENT: true
+          ENRICH: true
+
+      - name: Attest
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
+        with:
+          subject-path: '${{ github.workspace }}/cli.cdx.json'
