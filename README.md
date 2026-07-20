@@ -8,6 +8,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
+| v1.0.5 | [`v1.0.5`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.0.5) | [`76e3e1d`](https://github.com/Screenly/cli/commit/76e3e1dd6a5e961d5f775319e8f0dd10335f6487) |
 | v1.1.0 | [`v1.1.0`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.1.0) | [`c010390`](https://github.com/Screenly/cli/commit/c010390cdba4c9606c2030db4202339001af5b5b) |
 | v1.1.1 | [`v1.1.1`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.1.1) | [`fb6000e`](https://github.com/Screenly/cli/commit/fb6000e9748df7d06cd420c573a6be1494da587c) |
 
