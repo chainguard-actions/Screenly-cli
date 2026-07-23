@@ -1,0 +1,29 @@
+name: Test CLI with print output disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Even with print_cli_commands_output=false, the output should still be
+      # captured in the cli_commands_response output variable.
+      - id: action
+        uses: .
+        with:
+          screenly_api_token: "dummy-token-for-help"
+          cli_commands: "--help"
+          print_cli_commands_output: "false"
+          cli_version: "v1.1.1"
+
+      - name: Assert output is still captured when print is disabled
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected cli_commands_response to be captured even when print_cli_commands_output=false"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response is captured regardless of print setting"

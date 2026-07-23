@@ -1,0 +1,28 @@
+name: Test Screenly CLI with print output disabled
+on:
+  workflow_dispatch:
+jobs:
+  test-print-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run action with print_cli_commands_output disabled
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-test"
+          cli_commands: "--version"
+          print_cli_commands_output: "false"
+          cli_version: "v1.1.1"
+
+      - name: Assert cli_commands_response output is still populated
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected cli_commands_response to be non-empty even when print is disabled"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response is set even with print_cli_commands_output=false"

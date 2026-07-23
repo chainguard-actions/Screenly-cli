@@ -1,0 +1,40 @@
+name: Test Screenly CLI version command
+on:
+  workflow_dispatch:
+jobs:
+  test-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Screenly CLI version command
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "fake-token-for-version-check"
+          cli_commands: "--version"
+          print_cli_commands_output: "true"
+          cli_version: "v1.1.1"
+
+      - name: Assert CLI commands response output is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected cli_commands_response to be non-empty"
+            exit 1
+          fi
+          echo "PASS: cli_commands_response is set"
+
+      - name: Assert response contains version info
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if echo "$ACTUAL" | grep -qiE 'screenly|[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "PASS: response contains version information"
+          else
+            echo "FAIL: response does not contain expected version info"
+            exit 1
+          fi
