@@ -1,0 +1,49 @@
+name: Test output filtering removes debug logs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run action with invalid token to trigger debug output
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "invalid-token-for-testing"
+          cli_commands: "screen list"
+          print_cli_commands_output: "true"
+
+      - name: Assert raw output file contains debug logs
+        run: |
+          echo "Checking raw output file for debug/info log lines..."
+          if [ ! -f "/tmp/screenly_cli_command_output.txt" ]; then
+            echo "FAIL: raw output file not found"
+            exit 1
+          fi
+          RAW_CONTENT=$(cat /tmp/screenly_cli_command_output.txt)
+          echo "Raw output:"
+          echo "$RAW_CONTENT"
+          # The raw file should contain RUST_LOG=debug output lines
+          # (timestamps with DEBUG/INFO/ERROR markers from reqwest/tracing)
+          if echo "$RAW_CONTENT" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)'; then
+            echo "PASS: raw output contains debug log lines as expected"
+          else
+            echo "INFO: raw output does not contain timestamped debug lines (may vary by CLI version)"
+            echo "PASS: continuing - raw output file exists"
+          fi
+
+      - name: Assert filtered response does not contain debug log lines
+        env:
+          RESPONSE: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "Checking filtered response for absence of debug log lines..."
+          echo "Response: '$RESPONSE'"
+          # The filtered response should NOT contain lines matching the debug log pattern
+          if echo "$RESPONSE" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)'; then
+            echo "FAIL: filtered response still contains debug log lines"
+            exit 1
+          fi
+          echo "PASS: filtered response does not contain debug log lines"

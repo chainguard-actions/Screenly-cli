@@ -1,0 +1,44 @@
+name: Test CLI binary download
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run action (CLI download happens as first step)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "invalid-token-for-testing"
+          cli_commands: "screen list"
+          cli_version: "v1.0.3"
+
+      - name: Assert CLI binary was downloaded and is executable
+        run: |
+          echo "Checking if screenly binary exists at /tmp/screenly..."
+          if [ ! -f "/tmp/screenly" ]; then
+            echo "FAIL: screenly binary not found at /tmp/screenly"
+            exit 1
+          fi
+          echo "PASS: screenly binary exists"
+
+          echo "Checking if screenly binary is executable..."
+          if [ ! -x "/tmp/screenly" ]; then
+            echo "FAIL: screenly binary is not executable"
+            exit 1
+          fi
+          echo "PASS: screenly binary is executable"
+
+      - name: Assert CLI output artifact file was created
+        run: |
+          echo "Checking if CLI output file was created..."
+          if [ ! -f "/tmp/screenly_cli_command_output.txt" ]; then
+            echo "FAIL: CLI output file not found at /tmp/screenly_cli_command_output.txt"
+            exit 1
+          fi
+          echo "PASS: CLI output file exists"
+          echo "Contents:"
+          cat /tmp/screenly_cli_command_output.txt || true

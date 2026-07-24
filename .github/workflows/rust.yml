@@ -1,0 +1,34 @@
+name: Rust
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions: {}
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
+      - name: Build
+        run: cargo build --verbose --release
+      - name: Run tests
+        run: cargo test --verbose

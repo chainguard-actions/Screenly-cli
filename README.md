@@ -1,17 +1,104 @@
-# Screenly/cli
+[![sbomified](https://sbomify.com/assets/images/logo/badge.svg)](https://app.sbomify.com/component/UUzAdk8ixV)
+[![Lint](https://github.com/Screenly/cli/actions/workflows/lint.yml/badge.svg)](https://github.com/Screenly/cli/actions/workflows/lint.yml)
+[![Rust](https://github.com/Screenly/cli/actions/workflows/rust.yml/badge.svg)](https://github.com/Screenly/cli/actions/workflows/rust.yml)
+[![Nix](https://github.com/Screenly/cli/actions/workflows/nix.yml/badge.svg)](https://github.com/Screenly/cli/actions/workflows/nix.yml)
 
-GitHub Actions for Screenly.
+# Screenly Command Line Interface (CLI)
 
-Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/Screenly/cli](https://github.com/Screenly/cli).
+The Screenly CLI simplifies interactions with Screenly through your terminal, designed for both manual use and task automation.
 
-## Versions
+## Installation
 
-| Version | Tag | Upstream commit |
-|---------|-----|-----------------|
-| v1.0.5 | [`v1.0.5`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.0.5) | [`76e3e1d`](https://github.com/Screenly/cli/commit/76e3e1dd6a5e961d5f775319e8f0dd10335f6487) |
-| v1.1.0 | [`v1.1.0`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.1.0) | [`c010390`](https://github.com/Screenly/cli/commit/c010390cdba4c9606c2030db4202339001af5b5b) |
-| v1.1.1 | [`v1.1.1`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.1.1) | [`fb6000e`](https://github.com/Screenly/cli/commit/fb6000e9748df7d06cd420c573a6be1494da587c) |
-| v1.2.0 | [`v1.2.0`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.2.0) | [`925ee32`](https://github.com/Screenly/cli/commit/925ee3257f1280478ad3a328d14ec184447cf331) |
+### From Releases
+
+Download the latest release [here](https://github.com/Screenly/cli/releases/latest).
+
+### Homebrew (macOS only)
+
+```bash
+$ brew tap screenly/screenly-cli
+$ brew install screenly-cli
+```
+
+### Nix
+
+```bash
+$ nix-shell -p screenly-cli
+```
+
+### Docker
+
+For other operating systems or Docker usage:
+
+```bash
+$ docker run --rm \
+    -e API_TOKEN=YOUR_API_TOKEN \
+    screenly/cli:latest help
+```
+
+## Building from Source
+
+To build the Screenly CLI from source, ensure you have [Rust](https://www.rust-lang.org) installed:
+
+```bash
+$ cargo build --release
+```
+
+The `screenly` binary will be located in `target/release`.
+
+To configure a non-production API server, set the `API_SERVER_NAME` environment variable:
+
+```bash
+$ API_SERVER_NAME=local cargo build --release
+```
+
+## Commands
+
+Explore available commands [here](https://developer.screenly.io/cli/#commands).
+
+## GitHub Action
+
+Integrate Screenly CLI into your GitHub workflows:
+
+### Inputs
+
+#### `screenly_api_token`
+
+**Required** Screenly API token for your team.
+
+#### `cli_commands`
+
+**Required** Command to execute (e.g., `screen list`).
+
+#### `cli_version`
+
+Optional CLI version override.
+
+### Example usage
+
+```yaml
+uses: screenly/cli@master
+with:
+  screenly_api_token: ${{ secrets.SCREENLY_API_TOKEN }}
+  cli_commands: screen list
+```
+
+## Protocol Buffers (Protobuf) Generation
+
+Generate `pb_signature.rs` from `signature.proto`:
+
+```bash
+$ cargo install protobuf-codegen
+$ protoc --rust_out . signature.proto
+$ mv signature.rs src/pb_signature.rs
+```
+
+## Release Process
+
+- Merge PRs into `master`.
+- Update version in `Cargo.toml`, `action.yml`, `Dockerfile`, and GitHub Actions configurations.
+- Create release branch (e.g., `release-1.0.0`) and tag (e.g., `v1.0.0`).
+- Update [Homebrew repo](https://github.com/Screenly/homebrew-screenly-cli) with the latest version.
 
 ## Privacy
 

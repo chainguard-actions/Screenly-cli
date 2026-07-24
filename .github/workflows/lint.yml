@@ -1,0 +1,29 @@
+name: Lint
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+
+permissions: {}
+
+jobs:
+  lint:
+    name: Lint code base
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      checks: 'write'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2
+
+      - name: rust-clippy-check
+        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --all-features -- -D warnings
+      - name: rust-fmt-check
+        uses: actions-rust-lang/rustfmt@4066006ec54a31931b9b1fddfd38f2fdf2d27143 # v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

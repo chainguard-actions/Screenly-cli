@@ -1,0 +1,38 @@
+name: Test version command
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          screenly_api_token: "dummy-token"
+          cli_commands: "--version"
+          print_cli_commands_output: "true"
+
+      - name: Assert version output is captured
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected non-empty cli_commands_response output for --version"
+            exit 1
+          fi
+          echo "PASS: version output captured"
+
+      - name: Assert version string contains expected pattern
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if echo "$ACTUAL" | grep -qiE 'screenly|[0-9]+\.[0-9]+'; then
+            echo "PASS: version output contains expected pattern"
+          else
+            echo "FAIL: version output does not contain expected version pattern"
+            exit 1
+          fi
