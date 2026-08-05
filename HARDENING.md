@@ -10,41 +10,34 @@
 
 **Harden Agent Version:** `2`
 
-Action **Screenly--cli/v1.2.0** was hardened automatically. 7 finding(s) were identified and resolved across 3 iteration(s).
+Action **Screenly--cli/v1.2.0** was hardened automatically. 6 finding(s) were identified and resolved across 4 iteration(s).
 
 ## Findings Fixed
 
 ### script-injection (severity: high)
 
-Rule (a): The 'Download CLI' step directly interpolates `${{ inputs.cli_version }}` inside a `run:` shell command string. Before the shell executes the command, GitHub Actions performs template substitution, allowing an attacker-controlled value to break out of the URL string and inject arbitrary shell commands. Offending line: `"https://github.com/Screenly/cli/releases/download/${{ inputs.cli_version }}/screenly-cli-x86_64-unknown-linux-gnu.tar.gz"`
+Multiple ${{ inputs.* }} expressions are interpolated directly inside run: shell command strings in action.yml, violating sub-rule (a). (1) Line 34: `${{ inputs.cli_version }}` is embedded directly in a wget URL string — an attacker-controlled version string could break out of the URL context. (2) Line 43: `API_TOKEN=${{ inputs.screenly_api_token }}` and `${{ inputs.cli_commands }}` are both interpolated directly into the shell command line — inputs.cli_commands in particular allows arbitrary shell command injection (e.g. a value of `; malicious-command` would execute). These must be moved to env: variables and then referenced as quoted shell variables (e.g. "$CLI_COMMANDS").
 
 Locations:
 
-- `action.yml:35`
-
-### script-injection (severity: high)
-
-Rule (a): The 'Run CLI' step directly interpolates `${{ inputs.screenly_api_token }}` and `${{ inputs.cli_commands }}` inside a `run:` shell command string. `inputs.cli_commands` is especially dangerous — it is passed verbatim as shell arguments, enabling arbitrary command injection by any caller of this action. Offending line: `API_TOKEN=${{ inputs.screenly_api_token }} RUST_LOG=debug /tmp/screenly ${{ inputs.cli_commands }} >> /tmp/screenly_cli_command_output.txt`
-
-Locations:
-
-- `action.yml:45`
+- `action.yml:34`
+- `action.yml:43`
 
 ### github-env-injection (severity: high)
 
-The 'Run CLI' step writes the CLI command output to $GITHUB_OUTPUT without sanitization. The output is derived from `${{ inputs.cli_commands }}` (attacker-controlled). A newline character in the output can inject arbitrary key=value pairs into GITHUB_OUTPUT. The write `echo "response=$(cat /tmp/command_cleaned_output.txt)" >> "$GITHUB_OUTPUT"` is missing the required `printf '%s' ... | tr -d '\n\r'` sanitization step before the write.
+The 'Run CLI' step writes unsanitized CLI output to $GITHUB_OUTPUT without the required sanitization step (printf '%s' ... | tr -d '\n\r'). Specifically, line 49: `echo "response=$(cat /tmp/command_cleaned_output.txt)" >> "$GITHUB_OUTPUT"`. The file /tmp/screenly_cli_command_output.txt is produced by executing the user-controlled `${{ inputs.cli_commands }}` command, so its content is attacker-controlled. A newline embedded in the output could inject additional key=value pairs into GITHUB_OUTPUT, potentially overwriting other outputs consumed by downstream steps.
 
 Locations:
 
-- `action.yml:50`
+- `action.yml:49`
 
 ### unpinned-uses (severity: high)
 
-The step 'Upload artifacts of failed screenly cli command' uses `actions/upload-artifact@v4`, which is pinned to a mutable version tag (`@v4`) rather than an immutable 40-character commit SHA. A compromised or altered tag could introduce malicious code into the action. It should be pinned to a full SHA, e.g. `actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4`.
+The step 'Upload artifacts of failed screenly cli command' references `uses: actions/upload-artifact@v4`, which uses a mutable version tag rather than a pinned 40-character commit SHA. A tag can be moved to point to a different (potentially malicious) commit at any time, creating a supply-chain risk. It should be pinned to a full SHA, e.g. `actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4`.
 
 Locations:
 
-- `action.yml:54`
+- `action.yml:57`
 
 ### static-inline-injection (severity: high)
 
@@ -78,49 +71,43 @@ Locations:
 
 **Notes:**
 
-Fixed all 7 findings in hardened/action/action.yml:
-1. Download CLI step: moved `${{ inputs.cli_version }}` to env block as CLI_VERSION, referenced as ${CLI_VERSION} in shell.
-2. Run CLI step: moved `${{ inputs.screenly_api_token }}` to env block as API_TOKEN and `${{ inputs.cli_commands }}` to env block as CLI_COMMANDS; both referenced as plain env vars in shell.
-3. GITHUB_OUTPUT write: added `safe_response=$(printf '%s' "$(cat /tmp/command_cleaned_output.txt)" | tr -d '\n\r')` sanitization before writing to $GITHUB_OUTPUT.
-4. Pinned actions/upload-artifact@v4 to full SHA ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.
+Fixed action.yml with the following changes:
+1. Download CLI step: moved `${{ inputs.cli_version }}` to env: block as CLI_VERSION, referenced as ${CLI_VERSION} in the wget URL.
+2. Run CLI step: moved `${{ inputs.screenly_api_token }}` to env: block as API_TOKEN and `${{ inputs.cli_commands }}` to env: block as CLI_COMMANDS. CLI_COMMANDS is tokenized into a bash array using xargs (quote-aware) so multi-word commands are properly split without injection risk.
+3. GITHUB_OUTPUT write: sanitized the response with `printf '%s' ... | tr -d '\n\r'` before writing to $GITHUB_OUTPUT to prevent newline injection.
+4. Pinned actions/upload-artifact@v4 to full SHA ea165f8d65b6e75b540449e92b4886f43607fa02 with # v4 comment.
 
 ### Iteration 2
 
-**Fixes applied:** unpinned-uses, missing-permissions, script-injection, github-env-injection
+**Fixes applied:** script-injection, github-env-injection, unpinned-uses, missing-permissions
 
 **Notes:**
 
-Fixed all 4 findings across 8 workflow files:
+Fixed all 14 findings across 7 workflow files:
 
-**unpinned-uses**: Pinned all action references to full 40-char SHAs:
-- actions/checkout@v4 → @11d5960a326750d5838078e36cf38b85af677262
-- actions/checkout@v3 → @a37ce9120846195fa4ece8f58b268e6043cb2f26
-- screenly/cli@master → @3d6a92abedc446b3b89e68ea134a33f0025ae564
-- dorny/paths-filter@v3 → @d1c1ffe0248fe513906c8e24db8ea791d46f8590
-- dtolnay/rust-toolchain@master → @2c7215f132e9ebf062739d9130488b56d53c060c
-- dtolnay/rust-toolchain@nightly → @4fd1da8b0805d2d2e936788875a7d65dbd677dc2
-- actions-rs/clippy-check@v1.0.7 → @b5b5f21f4797c02da247df37026fcd0a5024aa4d
-- DeterminateSystems/nix-installer-action@v22 → @ef8a148080ab6020fd15196c2084a2eea5ff2d25
-- DeterminateSystems/flakehub-cache-action@main → @77c6bddd7d747943530aaa578c57f233ee5d920e
-- softprops/action-gh-release@v1 → @de2c0eb89ae2a093876385947365aca7b0e5f844
-- actions/attest-build-provenance@v1 → @ef244123eb79f2f7a7e75d99086184180e6d0018
-- docker/login-action@v3 → @c94ce9fb468520275223c153574b00df6fe4bcc9
-- actions/cache@v4 → @0057852bfaa89a56745cba8c7296529d2fc39830
-- sbomify/github-action@master → @c65a2b9fc24fc69f3376be690c430571be49c173
+1. **script-injection (release.yml)**: Moved matrix.target, matrix.build, env.CARGO, env.TARGET_FLAGS, env.TARGET_DIR out of run: shell commands into env: blocks; shell scripts now reference $MATRIX_TARGET, $MATRIX_BUILD, $CARGO, $TARGET_FLAGS, $TARGET_DIR.
 
-**missing-permissions**: Added permissions blocks to actions.yml (top-level + job), rust.yml (top-level + job), docs.yml (top-level + trigger job), release.yml (build-docker-image job).
+2. **script-injection (rust.yml)**: Moved matrix.rust out of docker run commands into env: blocks as MATRIX_RUST.
 
-**script-injection**: Moved all ${{ matrix.* }} and ${{ env.* }} expressions in run: blocks to env: blocks, referencing them as plain shell variables.
+3. **github-env-injection (release.yml)**: The 'Use Cross' step now sanitizes matrix.target with `printf '%s' "$MATRIX_TARGET" | tr -d '\n\r'` before writing to $GITHUB_ENV.
 
-**github-env-injection**: In release.yml 'Use Cross' step, sanitized matrix.target with `printf '%s' "$MATRIX_TARGET" | tr -d '\n\r'` before writing to GITHUB_ENV.
+4. **unpinned-uses**: Pinned all mutable tag/branch references to full 40-character SHA digests across actions.yml, docs.yml, fmt.yml, lint.yml, nix.yml, release.yml, rust.yml, and sbom.yml.
+
+5. **missing-permissions**: Added `permissions: {}` to actions.yml (top-level); added `permissions: {}` top-level and `permissions: contents: read` job-level to rust.yml; added `permissions: contents: read` to the build-docker-image job in release.yml.
 
 ### Iteration 3
+
+**Fixes applied:** script-injection, missing-permissions
+
+**Notes:**
+
+In .github/workflows/docs.yml, for the `trigger-developer-portal-deploy` job: (1) Added `permissions: {}` at the job level to restrict default token permissions; (2) Moved `${{ secrets.DEVELOPER_PORTAL_REPO_TOKEN }}` out of the `run:` curl command into a step-level `env:` block as `DEVELOPER_PORTAL_REPO_TOKEN`, and updated the shell script to reference it as the plain environment variable `$DEVELOPER_PORTAL_REPO_TOKEN`.
+
+### Iteration 4
 
 **Fixes applied:** script-injection
 
 **Notes:**
 
-Fixed two script-injection findings:
-1. hardened/action/action.yml line 54: Replaced unquoted `${CLI_COMMANDS}` expansion with `read -ra cli_args <<< "${CLI_COMMANDS}"` and `"${cli_args[@]}"` to safely split CLI arguments into an array, preventing shell metacharacter injection while preserving multi-argument support.
-2. hardened/action/.github/workflows/docs.yml line 87: Moved `${{ secrets.DEVELOPER_PORTAL_REPO_TOKEN }}` out of the run block into an `env:` block (`DEVELOPER_PORTAL_REPO_TOKEN: ${{ secrets.DEVELOPER_PORTAL_REPO_TOKEN }}`), then referenced it as `$DEVELOPER_PORTAL_REPO_TOKEN` in the curl command.
+Fixed the 'Build release binary' step in .github/workflows/release.yml. Changed from `run: $CARGO build --verbose --release $TARGET_FLAGS` (unquoted, injection-prone) to a bash script that: (1) adds `shell: bash`, (2) tokenizes TARGET_FLAGS into a bash array using xargs for quote-aware splitting (prevents metacharacter injection), (3) quotes $CARGO as "$CARGO", and (4) expands the array as "${flags[@]}" to pass each flag as a separate argument safely.
 

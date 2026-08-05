@@ -64,8 +64,13 @@ runs:
       run: |
         set -o pipefail
 
-        read -ra cli_args <<< "${CLI_COMMANDS}"
-        RUST_LOG=debug /tmp/screenly "${cli_args[@]}" >> /tmp/screenly_cli_command_output.txt
+        # Tokenize CLI_COMMANDS into an array, honoring quotes (like the shell would)
+        cli_args=()
+        while IFS= read -r -d '' t; do
+          cli_args+=("$t")
+        done < <(printf '%s' "$CLI_COMMANDS" | xargs printf '%s\0')
+
+        API_TOKEN="$API_TOKEN" RUST_LOG=debug /tmp/screenly "${cli_args[@]}" >> /tmp/screenly_cli_command_output.txt
 
         # Filter logs from github output, while still saving them as artifact. Filtered lines are like: 2024-10-16T13:16:13.974Z DEBUG [reqwest::connect] ...
         grep -Ev '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)' /tmp/screenly_cli_command_output.txt | tr '\n' ' ' > /tmp/command_cleaned_output.txt

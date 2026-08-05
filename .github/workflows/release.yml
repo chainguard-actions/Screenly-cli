@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
         with:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
@@ -73,8 +73,8 @@ jobs:
           cargo install cross
           echo "CARGO=cross" >> "$GITHUB_ENV"
           safe_target=$(printf '%s' "$MATRIX_TARGET" | tr -d '\n\r')
-          echo "TARGET_FLAGS=--target ${safe_target}" >> "$GITHUB_ENV"
-          echo "TARGET_DIR=./target/${safe_target}" >> "$GITHUB_ENV"
+          echo "TARGET_FLAGS=--target $safe_target" >> "$GITHUB_ENV"
+          echo "TARGET_DIR=./target/$safe_target" >> "$GITHUB_ENV"
 
       - name: Show command used for Cargo
         run: |
@@ -83,13 +83,20 @@ jobs:
           echo "target dir is: $TARGET_DIR"
 
       - name: Build release binary
-        run: $CARGO build --verbose --release $TARGET_FLAGS
+        shell: bash
+        run: |
+          flags=()
+          if [ -n "$TARGET_FLAGS" ]; then
+            while IFS= read -r -d '' t; do flags+=("$t"); done \
+              < <(printf '%s' "$TARGET_FLAGS" | xargs printf '%s\0')
+          fi
+          "$CARGO" build --verbose --release "${flags[@]}"
 
       - name: Strip release binary (linux and macos)
         if: matrix.build == 'linux' || matrix.build == 'macos'
         env:
           MATRIX_TARGET: ${{ matrix.target }}
-        run: strip "target/${MATRIX_TARGET}/release/screenly"
+        run: strip "target/$MATRIX_TARGET/release/screenly"
 
       - name: Package
         shell: bash
@@ -97,11 +104,11 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
           MATRIX_BUILD: ${{ matrix.build }}
         run: |
-          cd "target/${MATRIX_TARGET}/release"
+          cd "target/$MATRIX_TARGET/release"
           if [[ "$MATRIX_BUILD" == windows* ]]; then
-            zip "../../../screenly-cli-${MATRIX_TARGET}.zip" screenly.exe
+            zip "../../../screenly-cli-$MATRIX_TARGET.zip" screenly.exe
           else
-            tar czvf "../../../screenly-cli-${MATRIX_TARGET}.tar.gz" screenly
+            tar czvf "../../../screenly-cli-$MATRIX_TARGET.tar.gz" screenly
           fi
           cd -
 

@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Upload SBOM
-        uses: sbomify/github-action@c65a2b9fc24fc69f3376be690c430571be49c173 # master
+        uses: sbomify/github-action@5f1f203b0276f4bb081df2572daf319ce9b9d3fa # master
         env:
           TOKEN: ${{ secrets.SBOMIFY_TOKEN }}
           COMPONENT_ID: 'UUzAdk8ixV'
