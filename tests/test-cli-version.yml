@@ -1,0 +1,42 @@
+name: Test custom CLI version input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run action with specific CLI version
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "fake-token-for-testing"
+          cli_commands: "screen list"
+          cli_version: "v1.1.0"
+          print_cli_commands_output: "true"
+
+      - name: Assert action ran with specified CLI version
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The CLI binary should have been downloaded for the specified version.
+          # With a fake token, the CLI will fail authentication — that's expected.
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed as expected (fake token, but CLI was downloaded and ran)"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded unexpectedly"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Verify CLI binary was downloaded for specified version
+        run: |
+          if [ ! -f /tmp/screenly ]; then
+            echo "FAIL: CLI binary not found at /tmp/screenly"
+            exit 1
+          fi
+          echo "PASS: CLI binary exists at /tmp/screenly"

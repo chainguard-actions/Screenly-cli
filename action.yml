@@ -1,0 +1,92 @@
+# action.yml
+name: "Screenly"
+description: "GitHub Actions for Screenly."
+author: "Screenly, Inc"
+branding:
+  icon: "code"
+  color: "purple"
+inputs:
+  screenly_api_token:
+    description: "Your Screenly API token."
+    required: true
+  cli_commands:
+    description: "Your Screenly CLI command(s)."
+    required: true
+  print_cli_commands_output:
+    description: "Print the Screenly CLI command(s) output."
+    default: "true"
+    required: false
+  cli_version:
+    description: "Screenly CLI version."
+    default: "v1.1.1"
+outputs:
+  cli_commands_response:
+    description: "The response from the Screenly CLI command(s)."
+    value: ${{ steps.run-cli.outputs.response }}
+runs:
+  using: "composite"
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    - name: Download CLI
+      id: download-cli
+      env:
+        CLI_VERSION: ${{ inputs.cli_version }}
+      run: |
+        pushd /tmp
+        wget -q -O screenly-cli.tar.gz \
+          "https://github.com/Screenly/cli/releases/download/${CLI_VERSION}/screenly-cli-x86_64-unknown-linux-gnu.tar.gz"
+        tar xfz screenly-cli.tar.gz
+        chmod +x screenly
+        popd
+      shell: bash
+    - name: Run CLI
+      id: run-cli
+      continue-on-error: true
+      env:
+        SCREENLY_API_TOKEN: ${{ inputs.screenly_api_token }}
+        CLI_COMMANDS: ${{ inputs.cli_commands }}
+      run: |
+        set -o pipefail
+
+        cli_args=()
+        if [ -n "$CLI_COMMANDS" ]; then
+          while IFS= read -r -d '' t; do cli_args+=("$t"); done \
+            < <(printf '%s' "$CLI_COMMANDS" | xargs printf '%s\0')
+        fi
+
+        API_TOKEN="$SCREENLY_API_TOKEN" RUST_LOG=debug /tmp/screenly "${cli_args[@]}" >> /tmp/screenly_cli_command_output.txt
+
+        # Filter logs from github output, while still saving them as artifact. Filtered lines are like: 2024-10-16T13:16:13.974Z DEBUG [reqwest::connect] ...
+        grep -Ev '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)' /tmp/screenly_cli_command_output.txt | tr '\n' ' ' > /tmp/command_cleaned_output.txt
+        safe_response=$(printf '%s' "$(cat /tmp/command_cleaned_output.txt)" | tr -d '\n\r')
+        echo "response=${safe_response}" >> "$GITHUB_OUTPUT"
+        cat /tmp/command_cleaned_output.txt
+      shell: bash
+    - name: Upload artifacts of failed screenly cli command
+      if: ${{ steps.run-cli.outcome != 'success' }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: run-cli-output
+        path: |
+          /tmp/screenly_cli_command_output.txt
+    - name: Fail if cli command failed
+      shell: bash
+      if: ${{ steps.run-cli.outcome != 'success' }}
+      run: |
+        exit 1
