@@ -13,6 +13,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | v1.1.0 | [`v1.1.0`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.1.0) | [`c010390`](https://github.com/Screenly/cli/commit/c010390cdba4c9606c2030db4202339001af5b5b) |
 | v1.1.1 | [`v1.1.1`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.1.1) | [`fb6000e`](https://github.com/Screenly/cli/commit/fb6000e9748df7d06cd420c573a6be1494da587c) |
 | v1.2.0 | [`v1.2.0`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.2.0) | [`925ee32`](https://github.com/Screenly/cli/commit/925ee3257f1280478ad3a328d14ec184447cf331) |
+| v1.2.1 | [`v1.2.1`](https://github.com/chainguard-actions/Screenly-cli/tree/v1.2.1) | [`5dad863`](https://github.com/Screenly/cli/commit/5dad863ccdc36263eeb22880ceb67923bea7ef98) |
 
 ## Privacy
 
