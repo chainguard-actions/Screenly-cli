@@ -1,0 +1,45 @@
+name: Nix
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/nix.yml"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/nix.yml"
+
+jobs:
+  build:
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout flake
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Setup FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@83293488abfd33fbfb2ab084097467491c029962 # main
+
+      - name: Build screenly-cli
+        run: nix build .#screenly-cli

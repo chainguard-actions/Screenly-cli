@@ -1,0 +1,56 @@
+name: Test CLI output capture
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "fake-screenly-token-for-testing"
+          cli_commands: "screen list"
+          print_cli_commands_output: "true"
+
+      - name: Assert output variable is set (even on failure)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          RESPONSE: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "response: $RESPONSE"
+          # The action should have run and set the output (even if CLI failed)
+          # The output may be empty if CLI produced no stdout before failing,
+          # but the step itself must have an outcome
+          if [ -z "$OUTCOME" ]; then
+            echo "FAIL: outcome is empty — action did not run at all"
+            exit 1
+          fi
+          if [ "$OUTCOME" = "success" ]; then
+            # If it succeeded, response must be non-empty
+            if [ -z "$RESPONSE" ]; then
+              echo "FAIL: action succeeded but cli_commands_response output is empty"
+              exit 1
+            fi
+            echo "PASS: action succeeded with response: $RESPONSE"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully with fake token (outcome=failure)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Assert output file was created
+        run: |
+          # The action always writes to /tmp/screenly_cli_command_output.txt
+          if [ ! -f /tmp/screenly_cli_command_output.txt ]; then
+            echo "FAIL: output file /tmp/screenly_cli_command_output.txt was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+          echo "Contents:"
+          cat /tmp/screenly_cli_command_output.txt || true

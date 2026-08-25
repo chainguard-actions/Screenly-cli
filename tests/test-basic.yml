@@ -1,0 +1,55 @@
+name: Test basic usage - CLI download and run
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "fake-screenly-token-for-testing"
+          cli_commands: "screen list"
+          print_cli_commands_output: "true"
+
+      - name: Assert action ran and produced an outcome
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          RESPONSE: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "response: $RESPONSE"
+          # The action should either succeed (real token) or fail gracefully (fake token)
+          # In both cases, the outcome must be 'success' or 'failure', never empty
+          if [ -z "$OUTCOME" ]; then
+            echo "FAIL: outcome is empty — action did not run"
+            exit 1
+          fi
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (expected with fake token)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Assert CLI binary was downloaded
+        run: |
+          if [ ! -f /tmp/screenly ]; then
+            echo "FAIL: screenly CLI binary not found at /tmp/screenly"
+            exit 1
+          fi
+          echo "PASS: screenly CLI binary exists"
+
+      - name: Assert CLI binary is executable
+        run: |
+          if [ ! -x /tmp/screenly ]; then
+            echo "FAIL: screenly CLI binary is not executable"
+            exit 1
+          fi
+          echo "PASS: screenly CLI binary is executable"

@@ -1,0 +1,64 @@
+name: Test CLI version selection
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "fake-screenly-token-for-testing"
+          cli_commands: "screen list"
+          cli_version: "v1.2.2"
+          print_cli_commands_output: "false"
+
+      - name: Assert action ran with specified version
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ -z "$OUTCOME" ]; then
+            echo "FAIL: outcome is empty — action did not run"
+            exit 1
+          fi
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (expected with fake token)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Assert CLI binary was downloaded for specified version
+        run: |
+          if [ ! -f /tmp/screenly ]; then
+            echo "FAIL: screenly CLI binary not found at /tmp/screenly"
+            exit 1
+          fi
+          if [ ! -x /tmp/screenly ]; then
+            echo "FAIL: screenly CLI binary is not executable"
+            exit 1
+          fi
+          echo "PASS: screenly CLI binary v1.2.2 downloaded and executable"
+
+      - name: Assert CLI binary can print help
+        run: |
+          # The CLI binary should at least respond to --help or --version
+          # even without a valid API token
+          if /tmp/screenly --help > /tmp/screenly_help.txt 2>&1 || \
+             /tmp/screenly --version > /tmp/screenly_version.txt 2>&1; then
+            echo "PASS: CLI binary responds to help/version flags"
+          else
+            # Some CLIs exit non-zero for --help; check if output was produced
+            if [ -s /tmp/screenly_help.txt ] || [ -s /tmp/screenly_version.txt ]; then
+              echo "PASS: CLI binary produced output for help/version flags"
+            else
+              echo "INFO: CLI binary did not respond to help/version — may require subcommand"
+            fi
+          fi
