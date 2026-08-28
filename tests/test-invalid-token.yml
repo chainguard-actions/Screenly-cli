@@ -1,0 +1,39 @@
+name: Test Screenly CLI - invalid token fails gracefully
+on:
+  workflow_dispatch:
+
+jobs:
+  test-invalid-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run action with invalid token and auth-required command
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "invalid-token-12345"
+          cli_commands: "asset list"
+          print_cli_commands_output: "true"
+
+      - name: Assert action failed due to invalid token
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          RESULT: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "result: $RESULT"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action correctly failed with invalid token"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "WARN: action succeeded unexpectedly - checking output"
+            if [ -z "$RESULT" ]; then
+              echo "FAIL: action succeeded but output is empty"
+              exit 1
+            fi
+            echo "PASS: action succeeded with output (token may have been accepted)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

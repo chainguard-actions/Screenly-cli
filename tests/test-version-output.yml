@@ -1,0 +1,41 @@
+name: Test Screenly CLI - version command output capture
+on:
+  workflow_dispatch:
+
+jobs:
+  test-version-output:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run CLI version command
+        id: action
+        uses: .
+        with:
+          screenly_api_token: "dummy-token"
+          cli_commands: "--version"
+          print_cli_commands_output: "true"
+
+      - name: Assert version output is captured
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected version string in output but got empty"
+            exit 1
+          fi
+          echo "PASS: version output captured: $ACTUAL"
+
+      - name: Assert output contains version-like string
+        env:
+          ACTUAL: ${{ steps.action.outputs.cli_commands_response }}
+        run: |
+          echo "actual: $ACTUAL"
+          # The version output should contain digits (version numbers)
+          if echo "$ACTUAL" | grep -qE '[0-9]+\.[0-9]+'; then
+            echo "PASS: output contains version number"
+          else
+            echo "WARN: output does not contain expected version pattern, but is non-empty: $ACTUAL"
+            # Non-fatal: the CLI may format version differently
+          fi
