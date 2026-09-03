@@ -1,0 +1,31 @@
+name: Test output filtering
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          screenly_api_token: "fake-token-for-testing"
+          cli_commands: "screen list"
+          print_cli_commands_output: "true"
+
+      - name: Assert debug logs are filtered from response output
+        env:
+          RESPONSE: ${{ steps.action.outputs.cli_commands_response }}
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "response: $RESPONSE"
+          # The response should not contain raw DEBUG/INFO log lines
+          # Log lines look like: 2024-10-16T13:16:13.974Z DEBUG [reqwest::connect] ...
+          if echo "$RESPONSE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)'; then
+            echo "FAIL: response contains unfiltered debug/info log lines"
+            exit 1
+          fi
+          echo "PASS: response does not contain raw debug/info log lines"
