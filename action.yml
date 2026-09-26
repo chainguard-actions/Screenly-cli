@@ -80,7 +80,7 @@ runs:
       shell: bash
     - name: Upload artifacts of failed screenly cli command
       if: ${{ steps.run-cli.outcome != 'success' }}
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      uses: chainguard-actions/actions-upload-artifact@61ae9717c37cd5ac5fcaa5599c0dab961d043ecc # v4
       with:
         name: run-cli-output
         path: |
