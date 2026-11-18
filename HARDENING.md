@@ -4,39 +4,47 @@
 
 > This file was generated automatically by the hardening agent.
 
-**Policy SHA:** `d636be7e43ef829af6e853da6b3c7566db9f72fe`
+**Policy SHA:** `374911c4be584df24e6da57af2d990570ef0f859`
 
 **Test Policy SHA:** `843adf9e4b8f85d0c08b27b9d0b09dd094b54702`
 
 **Harden Agent Version:** `2`
 
-Action **Screenly--cli/v26.8.0** was hardened automatically. 6 finding(s) were identified and resolved across 1 iteration(s).
+Action **Screenly--cli/v26.8.0** was hardened automatically. 8 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### script-injection (severity: high)
 
-Rule (a) violation: ${{ inputs.cli_version }} is directly interpolated inside a run: shell command string in the 'Download CLI' step. An attacker-controlled input value is embedded verbatim into the wget URL before the shell ever sees it, enabling command injection. Example offending line: `"https://github.com/Screenly/cli/releases/download/${{ inputs.cli_version }}/screenly-cli-x86_64-unknown-linux-gnu.tar.gz"`
+Rule (a): the 'Download CLI' step puts ${{ inputs.cli_version }} straight into the run script: "https://github.com/Screenly/cli/releases/download/${{ inputs.cli_version }}/screenly-cli-x86_64-unknown-linux-gnu.tar.gz". Fix: pass the value in through an env: variable and use it double-quoted.
 
 Locations:
 
-- `action.yml:36`
+- `action.yml:37`
 
 ### script-injection (severity: high)
 
-Rule (a) violation: ${{ inputs.screenly_api_token }} and ${{ inputs.cli_commands }} are directly interpolated inside a run: shell command string in the 'Run CLI' step. Both are attacker-controllable inputs embedded verbatim into the shell command, enabling command injection. Offending line: `API_TOKEN=${{ inputs.screenly_api_token }} RUST_LOG=debug /tmp/screenly ${{ inputs.cli_commands }} >> /tmp/screenly_cli_command_output.txt`
+Rule (a): the 'Run CLI' step puts ${{ inputs.screenly_api_token }} and ${{ inputs.cli_commands }} straight into the run script, unquoted: `API_TOKEN=${{ inputs.screenly_api_token }} RUST_LOG=debug /tmp/screenly ${{ inputs.cli_commands }}  >> /tmp/screenly_cli_command_output.txt`. Shell metacharacters in either input would run as commands.
 
 Locations:
 
-- `action.yml:47`
+- `action.yml:49`
+
+### github-env-injection (severity: high)
+
+The 'Run CLI' step writes the output of a CLI command built from inputs.cli_commands to $GITHUB_OUTPUT (`echo "response=$(cat /tmp/command_cleaned_output.txt)" >> "$GITHUB_OUTPUT"`). The required sanitization step (printf '%s' ... | tr -d '\n\r') is missing. The earlier `tr '\n' ' '` does not remove carriage returns, and no random heredoc delimiter is used.
+
+Locations:
+
+- `action.yml:53`
 
 ### unpinned-uses (severity: high)
 
-The step 'Upload artifacts of failed screenly cli command' references `actions/upload-artifact@v4`, which uses a mutable version tag (@v4) instead of a pinned 40-character commit SHA. This is vulnerable to supply-chain attacks if the tag is moved to point to a different commit.
+action.yml uses a tag instead of a full commit SHA: `uses: actions/upload-artifact@v4`.
 
 Locations:
 
-- `action.yml:57`
+- `action.yml:59`
 
 ### static-inline-injection (severity: high)
 
@@ -62,16 +70,102 @@ Locations:
 
 - `action.yml:49`
 
+### prior-fix (severity: high)
+
+Carried forward from this version's previous harden, which fixed it; fix it again unless the code no longer has the problem. The previous harden changed action.yml without recording a finding for it, and this analysis reported nothing there. Re-apply its security changes unless the code no longer needs them. The previous patch:
+```diff
+diff --git a/action.yml b/action.yml
+index 9fa4ef7..ecc8f7f 100644
+--- a/action.yml
++++ b/action.yml
+@@ -1,4 +1,3 @@
+----
+ # action.yml
+ name: "Screenly"
+ description: "GitHub Actions for Screenly."
+@@ -20,48 +19,71 @@ inputs:
+   cli_version:
+     description: "Screenly CLI version."
+     default: "v26.8.0"
+-
+ outputs:
+   cli_commands_response:
+     description: "The response from the Screenly CLI command(s)."
+     value: ${{ steps.run-cli.outputs.response }}
+-
+ runs:
+   using: "composite"
+   steps:
+     - name: Download CLI
+       id: download-cli
++      env:
++        CLI_VERSION: ${{ inputs.cli_version }}
+       run: |
+         pushd /tmp
+         wget -q -O screenly-cli.tar.gz \
+-          "https://github.com/Screenly/cli/releases/download/${{ inputs.cli_version }}/screenly-cli-x86_64-unknown-linux-gnu.tar.gz"
++          "https://github.com/Screenly/cli/releases/download/${CLI_VERSION}/screenly-cli-x86_64-unknown-linux-gnu.tar.gz"
+         tar xfz screenly-cli.tar.gz
+         chmod +x screenly
+         popd
+       shell: bash
+-
+     - name: Run CLI
+       id: run-cli
+       continue-on-error: true
++      env:
++        API_TOKEN: ${{ inputs.screenly_api_token }}
++        CLI_COMMANDS: ${{ inputs.cli_commands }}
+       run: |
+         set -o pipefail
+ 
+-        API_TOKEN=${{ inputs.screenly_api_token }} RUST_LOG=debug /tmp/screenly ${{ inputs.cli_commands }}  >> /tmp/screenly_cli_command_output.txt
++        cli_args=()
++        if [ -n "$CLI_COMMANDS" ]; then
++          while IFS= read -r -d '' t; do cli_args+=("$t"); done \
++            < <(printf '%s' "$CLI_COMMANDS" | xargs printf '%s\0')
++        fi
++
++        API_TOKEN="$API_TOKEN" RUST_LOG=debug /tmp/screenly "${cli_args[@]}" >> /tmp/screenly_cli_command_output.txt
+ 
+         # Filter logs from github output, while still saving them as artifact. Filtered lines are like: 2024-10-16T13:16:13.974Z DEBUG [reqwest::connect] ...
+         grep -Ev '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z[[:space:]](DEBUG|INFO|WARNING|ERROR)' /tmp/screenly_cli_command_output.txt | tr '\n' ' ' > /tmp/command_cleaned_output.txt
+         echo "response=$(cat /tmp/command_cleaned_output.txt)" >> "$GITHUB_OUTPUT"
+         cat /tmp/command_cleaned_output.txt
+       shell: bash
+-
+     - name: Upload artifacts of failed screenly cli command
+       if: ${{ steps.run-cli.outcome != 'success' }}
+       uses: actions/upload-artifact@v4
+       with:
+         name: run-cli-output
+         path: |
+           /tmp/screenly_cli_command_output.txt
+-
+     - name: Fail if cli command failed
+       shell: bash
+       if: ${{ steps.run-cli.outcome != 'success' }}
+
+```
+
+Locations:
+
+- `action.yml`
+
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** script-injection, static-inline-injection, unpinned-uses
+**Fixes applied:** script-injection, static-inline-injection, github-env-injection, unpinned-uses, prior-fix
 
 **Notes:**
 
-Fixed all findings in hardened/action/action.yml:
-1. 'Download CLI' step: moved ${{ inputs.cli_version }} to env: block as CLI_VERSION, referenced as ${CLI_VERSION} in the wget URL.
-2. 'Run CLI' step: moved ${{ inputs.screenly_api_token }} to env: block as API_TOKEN and ${{ inputs.cli_commands }} as CLI_COMMANDS. CLI_COMMANDS is tokenized via xargs into a bash array (cli_args) to safely handle the argument list without injection. API_TOKEN is passed as an environment variable assignment.
-3. Pinned actions/upload-artifact@v4 to full commit SHA ea165f8d65b6e75b540449e92b4886f43607fa02 with # v4 comment.
+I fixed all the findings in action.yml, re-applying and extending the previous harden. Nothing was run or tested.
+
+- **Download CLI step:** `inputs.cli_version` now comes in through the env var `CLI_VERSION` and is used double-quoted in the wget URL.
+- **Run CLI step:** the API token and the CLI commands now come in as env vars (`API_TOKEN`, `CLI_COMMANDS`). Upstream pasted the commands straight into the script, so the shell honoured quotes in them. To keep that behaviour, the commands are split into an array with the quote-aware xargs method: `xargs -r true` first, so an unmatched quote fails the step, then the shell's built-in printf through `sh -c` to do the split. Shell characters in the input (`;`, `|`, `$(...)`, backticks) now reach the CLI as plain text and are never run.
+- **Step output:** the value written to `$GITHUB_OUTPUT` is now read into a variable first (with `|| true`, because upstream's echo hid any failure there), then has both `\n` and `\r` removed with `tr -d '\n\r'` before it is written.
+- **upload-artifact:** pinned to `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4`.
+
+One behaviour difference from the previous harden: its split used `xargs printf`, so a command list like `--version` could be taken as an option by the external printf and dropped. The new split uses the shell's built-in printf, which avoids that.
 
